@@ -300,7 +300,7 @@ static int jiveL_dns_open(lua_State *L) {
 		return luaL_error(L, "socketpair failed: %s", strerror(r));
 	}
 
-	u->t = SDL_CreateThread(dns_resolver_thread, (void *)(long)(u->fd[1]));
+	u->t = SDL_CreateThread(dns_resolver_thread, "test", (void *)(long)(u->fd[1]));
 
 	luaL_getmetatable(L, "jive.dns");
 	lua_setmetatable(L, -2);

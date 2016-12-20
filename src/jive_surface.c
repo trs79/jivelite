@@ -18,7 +18,7 @@
 
 struct loaded_image_surface {
 	Uint16 image;								/* index to underlying struct image */
-	SDL_Surface *srf;
+	GPU_Image *srf;
 	struct loaded_image_surface *prev, *next;	/* LRU cache double-linked list */
 };
 
@@ -55,7 +55,8 @@ struct jive_surface {
 	Uint32 refcount;
 
 	/* Fields for simple surfaces */
-	SDL_Surface *sdl;
+	GPU_Image *sdl;
+	GPU_Target *target;
 	Sint16 offset_x, offset_y;
 
 	/* Fields for tiles */
@@ -136,7 +137,7 @@ static void _unload_image(Uint16 index) {
 	LOG_DEBUG(log_ui_draw, "Unloading  %3d:%s", index, images[index].path);
 #endif
 
-	SDL_FreeSurface(loaded->srf);
+	GPU_FreeImage(loaded->srf);
 	free(loaded);
 	images[index].loaded = 0;
 }
@@ -192,31 +193,36 @@ static void _use_image(Uint16 index) {
 
 static void _load_image (Uint16 index, bool hasAlphaFlags, Uint32 alphaFlags) {
 	struct image *image = &images[index];
-	SDL_Surface *tmp, *srf;
+	GPU_Image *tmp, *srf;
 
-	tmp = IMG_Load(image->path);
+	//tmp = IMG_Load(image->path);
+	tmp = GPU_LoadImage(image->path);
+	tmp->anchor_x = 0;
+	tmp->anchor_y = 0;
+
 	if (!tmp) {
 		LOG_WARN(log_ui_draw, "Error loading tile image %s: %s\n", image->path, IMG_GetError());
 		return;
 	}
-	if (tmp->format->Amask) {
-		srf = SDL_DisplayFormatAlpha(tmp);
+	if (tmp->format == GPU_FORMAT_RGBA) {
+		//srf = SDL_DisplayFormatAlpha(tmp);
 		image->flags |= IMAGE_FLAG_AMASK;
 	} else {
-		srf = SDL_DisplayFormat(tmp);
+		//srf = SDL_DisplayFormat(tmp);
 	}
-	SDL_FreeSurface(tmp);
+	//SDL_FreeSurface(tmp);
+	srf = tmp;
 
 	if (!srf)
 		return;
 
-	if (hasAlphaFlags) {
+	/*if (hasAlphaFlags) {
 		SDL_SetAlpha(srf, alphaFlags, 0);
-	}
+	}*/
 
 	image->loaded = calloc(sizeof *(image->loaded), 1);
 	image->loaded->image = index;
-	image->loaded->srf = srf;
+	image->loaded->srf = tmp;
 
 #ifdef JIVE_PROFILE_IMAGE_CACHE
 	image->load_count++;
@@ -231,7 +237,7 @@ static void _load_image (Uint16 index, bool hasAlphaFlags, Uint32 alphaFlags) {
 	_use_image(index);
 
 #ifdef JIVE_PROFILE_IMAGE_CACHE
-	LOG_DEBUG(log_ui_draw, "Loaded image %3d:%s", index, image->path);
+	LOG_INFO(log_ui_draw, "Loaded image %3d:%s", index, image->path);
 #endif
 }
 
@@ -295,16 +301,17 @@ static void _init_image_sizes(struct image *image) {
 		SDL_Surface *tmp;
 
 #ifdef JIVE_PROFILE_IMAGE_CACHE
-		 LOG_DEBUG(log_ui_draw, "Loading image just for sizes: %s", image->path);
+		 LOG_INFO(log_ui_draw, "Loading image just for sizes: %s", image->path);
 #endif
 
-		tmp = IMG_Load(image->path);
+		tmp = GPU_LoadSurface(image->path);
+
 		if (!tmp) {
 			LOG_WARN(log_ui_draw, "Error loading tile image %s: %s\n", image->path, IMG_GetError());
 			image->flags |= IMAGE_FLAG_INIT;	/* fake it - no point in trying repeatedly */
 			return;
 		}
-		if (tmp->format->Amask)
+		if (tmp->format == GPU_FORMAT_RGBA)
 			image->flags |= IMAGE_FLAG_AMASK;
 
 		image->w = tmp->w;
@@ -384,7 +391,7 @@ static void _init_tile_sizes(JiveTile *tile) {
 	tile->flags |= TILE_FLAG_INIT;
 }
 
-static void _get_tile_surfaces(JiveTile *tile, SDL_Surface *srf[9], bool load) {
+static void _get_tile_surfaces(JiveTile *tile, GPU_Image *srf[9], bool load) {
 	int i;
 
 	if (load)
@@ -399,7 +406,7 @@ static void _get_tile_surfaces(JiveTile *tile, SDL_Surface *srf[9], bool load) {
 	}
 }
 
-static SDL_Surface *get_image_surface(JiveTile *tile) {
+static GPU_Image *get_image_surface(JiveTile *tile) {
 	if (!IS_DYNAMIC_IMAGE(tile)) {
 		//LOG_ERROR(log_ui_draw, "no SDL surface available");
 		return NULL;
@@ -412,9 +419,10 @@ static SDL_Surface *get_image_surface(JiveTile *tile) {
 	return images[tile->image[0]].loaded->srf;
 }
 
-static inline SDL_Surface * _resolve_SDL_surface(JiveSurface *srf) {
+static inline GPU_Image * _resolve_SDL_surface(JiveSurface *srf) {
 	if (srf->sdl)
 		return srf->sdl;
+	
 	return get_image_surface(srf);
 }
 
@@ -470,10 +478,11 @@ JiveTile *jive_tile_load_image_data(const char *data, size_t len) {
 	SDL_Surface *tmp, *srf;
 	SDL_RWops *src;
 
+	assert(0);
 	tile = calloc(sizeof(JiveTile), 1);
 	tile->refcount = 1;
 
-	src = SDL_RWFromConstMem(data, (int) len);
+	/*src = SDL_RWFromConstMem(data, (int) len);
 	tmp = IMG_Load_RW(src, 1);
 
 	if (!tmp) {
@@ -491,7 +500,7 @@ JiveTile *jive_tile_load_image_data(const char *data, size_t len) {
 		SDL_FreeSurface(tmp);
 	}
 
-	tile->sdl = srf;
+	tile->sdl = srf;*/
 
 	return tile;
 }
@@ -578,11 +587,11 @@ void jive_tile_get_min_size(JiveTile *tile, Uint16 *w, Uint16 *h) {
 }
 
 void jive_tile_set_alpha(JiveTile *tile, Uint32 flags) {
-	SDL_Surface *srf[9];
+	GPU_Image *srf[9];
 	int i;
 
 	if (tile->sdl) {
-		SDL_SetAlpha(tile->sdl, flags, 0);
+		//SDL_SetAlpha(tile->sdl, flags, 0);
 		return;
 	}
 
@@ -592,7 +601,7 @@ void jive_tile_set_alpha(JiveTile *tile, Uint32 flags) {
 	_get_tile_surfaces(tile, srf, false);
 	for (i=0; i<9; i++) {
 		if (srf[i]) {
-			SDL_SetAlpha(srf[i], flags, 0);
+			//SDL_SetAlpha(srf[i], flags, 0);
 		}
 	}
 }
@@ -605,7 +614,7 @@ void jive_tile_free(JiveTile *tile) {
 	}
 
 	if (tile->sdl) {
-		SDL_FreeSurface (tile->sdl);
+		GPU_FreeImage (tile->sdl);
 		tile->sdl = NULL;
 	}
 
@@ -634,8 +643,8 @@ void jive_tile_free(JiveTile *tile) {
 	free(tile);
 }
 
-static __inline__ void blit_area(SDL_Surface *src, SDL_Surface *dst, int dx, int dy, int dw, int dh) {
-	SDL_Rect sr, dr;
+static __inline__ void blit_area(GPU_Image *src, GPU_Target *dst, int dx, int dy, int dw, int dh) {
+	GPU_Rect sr, dr;
 	int x, y, w, h;
 	int tw, th;
 
@@ -647,29 +656,43 @@ static __inline__ void blit_area(SDL_Surface *src, SDL_Surface *dst, int dx, int
 
 	h = dh;
 	y = dy;
-	while (h > 0) {
+	
+	//while (h > 0) {
 		w = dw;
 		x = dx;
-		while (w > 0) {
+	//	while (w > 0) {
 			sr.w = w;
 			sr.h = h;
 			dr.x = x;
 			dr.y = y;
 
-			SDL_BlitSurface(src, &sr, dst, &dr);
+			src->anchor_x = 0;
+			src->anchor_y = 0;
 
-			x += tw;
-			w -= tw;
-		}
+			//GPU_SetSnapMode(src, GPU_SNAP_NONE);
+			//GPU_SetImageFilter(src, GPU_FILTER_NEAREST);
+			
+			//if ((int)sr.h > th)
+			//	GPU_SetWrapMode(src, GPU_WRAP_NONE, GPU_WRAP_NONE);
+			//GPU_SetBlendMode(src, GPU_BLEND_NORMAL_KEEP_ALPHA);
+			GPU_Blit(src, &sr, dst, dr.x, dr.y);
+			// GPU_Flip(dst);
+
+			//SDL_BlitSurface(src, &sr, dst, &dr);
+		//	h = -1;
+			//w = -1;
+			// x += tw;
+			// w -= tw;
+		//}
 
 		y += th;
 		h -= th;
-	}
+	//}
 }
 
 /* this function must only be used for blitting tiles */
-void jive_surface_get_tile_blit(JiveSurface *srf, SDL_Surface **sdl, Sint16 *x, Sint16 *y) {
-	*sdl = _resolve_SDL_surface(srf);
+void jive_surface_get_tile_blit(JiveSurface *srf, GPU_Target **sdl, Sint16 *x, Sint16 *y) {
+	*sdl = srf->target;
 	*x = srf->offset_x;
 	*y = srf->offset_y;
 }
@@ -678,11 +701,11 @@ void jive_surface_get_tile_blit(JiveSurface *srf, SDL_Surface **sdl, Sint16 *x, 
 static void _blit_tile(JiveTile *tile, JiveSurface *dst, Uint16 dx, Uint16 dy, Uint16 dw, Uint16 dh) {
 	int ox=0, oy=0, ow=0, oh=0;
 	Sint16 dst_offset_x, dst_offset_y;
-	SDL_Surface *dst_srf;
-	SDL_Surface *srf[9];
+	GPU_Target *dst_srf;
+	GPU_Image *srf[9];
 
 	if (tile->flags & TILE_FLAG_BG) {
-		jive_surface_boxColor(dst, dx, dy, dx + dw - 1, dy + dh - 1, tile->bg);
+	//	jive_surface_boxColor(dst, dx, dy, dx + dw - 1, dy + dh - 1, tile->bg);
 		return;
 	}
 
@@ -813,76 +836,80 @@ void jive_tile_blit_centered(JiveTile *tile, JiveSurface *dst, Uint16 dx, Uint16
 }
 
 
-JiveSurface *jive_surface_set_video_mode(Uint16 w, Uint16 h, Uint16 bpp, bool fullscreen) {
+JiveSurface *jive_surface_set_video_mode(Uint16 w, Uint16 h, Uint16 bpp, GPU_Target *screen, bool fullscreen) {
 	JiveSurface *srf;
-	SDL_Surface *sdl;
+	//SDL_Surface *sdl;
 	Uint32 flags;
 
-	if (fullscreen) {
-	    flags = SDL_FULLSCREEN;
-	}
-	else {
-	    flags = SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_RESIZABLE;
-	}
+	//if (fullscreen) {
+	//    flags = SDL_FULLSCREEN;
+	//}
+	//else {
+	//    flags = SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_RESIZABLE;
+	//}
 
-	sdl = SDL_GetVideoSurface();
+	//sdl = SDL_GetVideoSurface();
 
-	if (sdl) {
-		const SDL_VideoInfo *video_info;
-		Uint32 mask;
+	//if (sdl) {
+	//	const SDL_VideoInfo *video_info;
+	//	Uint32 mask;
 
-		/* check if we can reuse the existing suface? */
-		video_info = SDL_GetVideoInfo();
-		if (video_info->wm_available) {
-			mask = (SDL_FULLSCREEN | SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_RESIZABLE);
-		}
-		else {
-			mask = (SDL_HWSURFACE | SDL_DOUBLEBUF);
-		}
+	//	/* check if we can reuse the existing suface? */
+	//	video_info = SDL_GetVideoInfo();
+	//	if (video_info->wm_available) {
+	//		mask = (SDL_FULLSCREEN | SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_RESIZABLE);
+	//	}
+	//	else {
+	//		mask = (SDL_HWSURFACE | SDL_DOUBLEBUF);
+	//	}
 
-		if ((sdl->w != w) || (sdl->h != h)
-		    || (bpp && sdl->format->BitsPerPixel != bpp)
-		    || ((sdl->flags & mask) != (flags & mask))) {
-			sdl = NULL;
-		}
-	}
+	//	if ((sdl->w != w) || (sdl->h != h)
+	//	    || (bpp && sdl->format->BitsPerPixel != bpp)
+	//	    || ((sdl->flags & mask) != (flags & mask))) {
+	//		sdl = NULL;
+	//	}
+	//}
 
-	if (!sdl) {
-		/* create new surface */
-		sdl = SDL_SetVideoMode(w, h, bpp, flags);
-		if (!sdl) {
-			LOG_ERROR(log_ui_draw, "SDL_SetVideoMode(%d,%d,%d): %s",
-				  w, h, bpp, SDL_GetError());
-			return NULL;
-		}
+	//if (!sdl) {
+	//	/* create new surface */
+	//	sdl = SDL_SetVideoMode(w, h, bpp, flags);
+	//	if (!sdl) {
+	//		LOG_ERROR(log_ui_draw, "SDL_SetVideoMode(%d,%d,%d): %s",
+	//			  w, h, bpp, SDL_GetError());
+	//		return NULL;
+	//	}
 
-		if ( (sdl->flags & SDL_HWSURFACE) && (sdl->flags & SDL_DOUBLEBUF)) {
-			LOG_INFO(log_ui_draw, "Using a hardware double buffer");
-		}
+	//	if ( (sdl->flags & SDL_HWSURFACE) && (sdl->flags & SDL_DOUBLEBUF)) {
+	//		LOG_INFO(log_ui_draw, "Using a hardware double buffer");
+	//	}
 
-		LOG_DEBUG(log_ui_draw, "Video mode: %d bits/pixel %d bytes/pixel [R<<%d G<<%d B<<%d]", sdl->format->BitsPerPixel, sdl->format->BytesPerPixel, sdl->format->Rshift, sdl->format->Gshift, sdl->format->Bshift);
+	//	LOG_DEBUG(log_ui_draw, "Video mode: %d bits/pixel %d bytes/pixel [R<<%d G<<%d B<<%d]", sdl->format->BitsPerPixel, sdl->format->BytesPerPixel, sdl->format->Rshift, sdl->format->Gshift, sdl->format->Bshift);
 
-	}
+	//}
+
+	GPU_SetWindowResolution(w, h);
 
 	srf = calloc(sizeof(JiveSurface), 1);
 	srf->refcount = 1;
-	srf->sdl = sdl;
+	srf->target = (screen != NULL ? screen : NULL);
 
 	return srf;
 }
 
 JiveSurface *jive_surface_newRGB(Uint16 w, Uint16 h) {
 	JiveSurface *srf;
-	SDL_Surface *screen, *sdl;
+	GPU_Image *screen, *sdl;
 	int bpp;
 
-	screen = SDL_GetVideoSurface();
-	bpp = screen->format->BitsPerPixel;
+	sdl = GPU_CreateImage(w, h, GPU_FORMAT_RGB);
 
-	sdl = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, bpp, 0, 0, 0, 0);
+	//screen = SDL_GetVideoSurface();
+	//bpp = screen->format->BitsPerPixel;
 
-	/* Opaque surface */
-	SDL_SetAlpha(sdl, SDL_SRCALPHA, SDL_ALPHA_OPAQUE);
+	//sdl = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, bpp, 0, 0, 0, 0);
+
+	///* Opaque surface */
+	//SDL_SetAlpha(sdl, SDL_SRCALPHA, SDL_ALPHA_OPAQUE);
 
 	srf = calloc(sizeof(JiveSurface), 1);
 	srf->refcount = 1;
@@ -894,25 +921,26 @@ JiveSurface *jive_surface_newRGB(Uint16 w, Uint16 h) {
 
 JiveSurface *jive_surface_newRGBA(Uint16 w, Uint16 h) {
 	JiveSurface *srf;
-	SDL_Surface *sdl;
+	GPU_Image *sdl;
 
+	sdl = GPU_CreateImage(w, h, GPU_FORMAT_RGBA);
 	/*
 	 * Work out the optimium pixel masks for the display with
 	 * 32 bit alpha surfaces. If we get this wrong a non-optimised
 	 * blitter will be used.
 	 */
-	const SDL_VideoInfo *video_info = SDL_GetVideoInfo();
-	if (video_info->vfmt->Rmask < video_info->vfmt->Bmask) {
-		sdl = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32,
-					   0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
-	}
-	else {
-		sdl = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32,
-					   0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
-	}
+	//const SDL_VideoInfo *video_info = SDL_GetVideoInfo();
+	//if (video_info->vfmt->Rmask < video_info->vfmt->Bmask) {
+	//	sdl = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32,
+	//				   0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
+	//}
+	//else {
+	//	sdl = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32,
+	//				   0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+	//}
 
-	/* alpha channel, paint transparency */
-	SDL_SetAlpha(sdl, SDL_SRCALPHA, SDL_ALPHA_OPAQUE);
+	///* alpha channel, paint transparency */
+	//SDL_SetAlpha(sdl, SDL_SRCALPHA, SDL_ALPHA_OPAQUE);
 
 	srf = calloc(sizeof(JiveSurface), 1);
 	srf->refcount = 1;
@@ -922,7 +950,7 @@ JiveSurface *jive_surface_newRGBA(Uint16 w, Uint16 h) {
 }
 
 
-JiveSurface *jive_surface_new_SDLSurface(SDL_Surface *sdl_surface) {
+JiveSurface *jive_surface_new_SDLSurface(GPU_Image *sdl_surface) {
 	JiveSurface *srf;
 
 	srf = calloc(sizeof(JiveSurface), 1);
@@ -944,7 +972,7 @@ JiveSurface *jive_surface_ref(JiveSurface *srf) {
 static JiveSurface *jive_surface_display_format(JiveSurface *srf) {
 	SDL_Surface *sdl;
 
-	if (srf->sdl == NULL || SDL_GetVideoSurface() == NULL) {
+	/*if (srf->sdl == NULL || SDL_GetVideoSurface() == NULL) {
 		return srf;
 	}
 
@@ -955,7 +983,7 @@ static JiveSurface *jive_surface_display_format(JiveSurface *srf) {
 		sdl = SDL_DisplayFormat(srf->sdl);
 	}
 	SDL_FreeSurface(srf->sdl);
-	srf->sdl = sdl;
+	srf->sdl = sdl;*/
 
 	return srf;
 }
@@ -967,19 +995,24 @@ JiveSurface *jive_surface_load_image(const char *path) {
 
 
 JiveSurface *jive_surface_load_image_data(const char *data, size_t len) {
+	return NULL;
 	SDL_RWops *src = SDL_RWFromConstMem(data, (int) len);
-	SDL_Surface *sdl = IMG_Load_RW(src, 1);
+	SDL_Surface *surface = IMG_Load_RW(src, 1);
+
+	GPU_Image *sdl = GPU_CopyImageFromSurface(surface);
 
 	JiveSurface *srf = calloc(sizeof(JiveSurface), 1);
 	srf->refcount = 1;
 	srf->sdl = sdl;
 
-	return jive_surface_display_format(srf);
+	SDL_FreeSurface(surface);
+	return srf;
+	//return jive_surface_display_format(srf);
 }
 
 
 int jive_surface_set_wm_icon(JiveSurface *srf) {
-	SDL_WM_SetIcon(_resolve_SDL_surface(srf), NULL);
+	//SDL_WM_SetIcon(_resolve_SDL_surface(srf), NULL);
 	return 1;
 }
 
@@ -1085,20 +1118,24 @@ void jive_surface_set_offset(JiveSurface *srf, Sint16 x, Sint16 y) {
 	srf->offset_y = y;
 }
 
-void jive_surface_get_clip(JiveSurface *srf, SDL_Rect *r) {
-	if (!srf->sdl) {
+void jive_surface_get_clip(JiveSurface *srf, GPU_Rect *r) {
+	if (!srf->target) {
 		LOG_ERROR(log_ui, "Underlying sdl surface already freed, possibly with release()");
 		return;
 	}
-	SDL_GetClipRect(srf->sdl, r);
+	r->w = srf->target->clip_rect.w;
+	r->h = srf->target->clip_rect.h;
+	r->x = srf->target->clip_rect.x;
+	r->y = srf->target->clip_rect.y;
+	//GPU_GetClipRect(srf->sdl, r);
 
 	r->x -= srf->offset_x;
 	r->y -= srf->offset_y;
 }
 
-void jive_surface_set_clip(JiveSurface *srf, SDL_Rect *r) {
-	SDL_Rect tmp;
-	if (!srf->sdl) {
+void jive_surface_set_clip(JiveSurface *srf, GPU_Rect *r) {
+	GPU_Rect tmp;
+	if (!srf->target) {
 		LOG_ERROR(log_ui, "Underlying sdl surface already freed, possibly with release()");
 		return;
 	}
@@ -1112,27 +1149,27 @@ void jive_surface_set_clip(JiveSurface *srf, SDL_Rect *r) {
 	else {
 		tmp.x = 0;
 		tmp.y = 0;
-		tmp.w = srf->sdl->w;
-		tmp.h = srf->sdl->h;
+		tmp.w = srf->target->w;
+		tmp.h = srf->target->h;
 	}
 
-	SDL_SetClipRect(srf->sdl, &tmp);
+	GPU_SetClipRect(srf->target, tmp);
 }
 
 
-void jive_surface_push_clip(JiveSurface *srf, SDL_Rect *r, SDL_Rect *pop)
+void jive_surface_push_clip(JiveSurface *srf, GPU_Rect *r, GPU_Rect *pop)
 {
-	SDL_Rect tmp;
+	GPU_Rect tmp;
 
 	jive_surface_get_clip(srf, pop);
 	jive_rect_intersection(r, pop, &tmp);
-	jive_surface_set_clip(srf, &tmp);
+	GPU_SetClipRect(srf->target, tmp);
 }
 
 
 void jive_surface_set_clip_arg(JiveSurface *srf, Uint16 x, Uint16 y, Uint16 w, Uint16 h) {
-	SDL_Rect tmp;
-	if (!srf->sdl) {
+	GPU_Rect tmp;
+	if (!srf->target) {
 		LOG_ERROR(log_ui, "Underlying sdl surface already freed, possibly with release()");
 		return;
 	}
@@ -1142,11 +1179,11 @@ void jive_surface_set_clip_arg(JiveSurface *srf, Uint16 x, Uint16 y, Uint16 w, U
 	tmp.w = w;
 	tmp.h = h;
 
-	SDL_SetClipRect(srf->sdl, &tmp);
+	GPU_SetClipRect(srf->target, tmp);
 }
 
 void jive_surface_get_clip_arg(JiveSurface *srf, Uint16 *x, Uint16 *y, Uint16 *w, Uint16 *h) {
-	SDL_Rect tmp;
+	GPU_Rect tmp;
 	if (!srf->sdl) {
 		LOG_ERROR(log_ui, "Underlying sdl surface already freed, possibly with release()");
 		*x = 0;
@@ -1156,7 +1193,12 @@ void jive_surface_get_clip_arg(JiveSurface *srf, Uint16 *x, Uint16 *y, Uint16 *w
 		return;
 	}
 
-	SDL_GetClipRect(srf->sdl, &tmp);
+	//SDL_GetClipRect(srf->sdl, &tmp);
+
+	tmp.w = srf->target->clip_rect.w;
+	tmp.h = srf->target->clip_rect.h;
+	tmp.x = srf->target->clip_rect.x;
+	tmp.y = srf->target->clip_rect.y;
 
 	*x = tmp.x - srf->offset_x;
 	*y = tmp.y - srf->offset_y;
@@ -1164,8 +1206,9 @@ void jive_surface_get_clip_arg(JiveSurface *srf, Uint16 *x, Uint16 *y, Uint16 *w
 	*h = tmp.h;
 }
 
-void jive_surface_flip(JiveSurface *srf) {
-	SDL_Flip(srf->sdl);
+void jive_surface_flip(JiveSurface *srf) {	
+	GPU_Flip(srf->target);
+	//SDL_Flip(srf->sdl);
 }
 
 
@@ -1174,11 +1217,17 @@ void jive_surface_blit(JiveSurface *src, JiveSurface *dst, Uint16 dx, Uint16 dy)
 	Uint32 t0 = jive_jiffies(), t1;
 #endif //JIVE_PROFILE_BLIT
 
-	SDL_Rect dr;
+	GPU_Rect dr;
 	dr.x = dx + dst->offset_x;
 	dr.y = dy + dst->offset_y;
+	GPU_Image *resolved = _resolve_SDL_surface(src);
 
-	SDL_BlitSurface(_resolve_SDL_surface(src), 0, dst->sdl, &dr);
+	resolved->anchor_x = 0;
+	resolved->anchor_y = 0;
+
+	GPU_Clear(dst->target);
+	GPU_Blit(_resolve_SDL_surface(src), NULL, dst->target, dr.x, dr.y);
+	//SDL_BlitSurface(_resolve_SDL_surface(src), 0, dst->sdl, &dr);
 
 #ifdef JIVE_PROFILE_BLIT
 	t1 = jive_jiffies();
@@ -1193,11 +1242,12 @@ void jive_surface_blit_clip(JiveSurface *src, Uint16 sx, Uint16 sy, Uint16 sw, U
 	Uint32 t0 = jive_jiffies(), t1;
 #endif //JIVE_PROFILE_BLIT
 
-	SDL_Rect sr, dr;
+	GPU_Rect sr, dr;
 	sr.x = sx; sr.y = sy; sr.w = sw; sr.h = sh;
 	dr.x = dx + dst->offset_x; dr.y = dy + dst->offset_y;
 
-	SDL_BlitSurface(_resolve_SDL_surface(src), &sr, dst->sdl, &dr);
+	GPU_Blit(_resolve_SDL_surface(src), &sr, dst->target, dr.x, dr.y);
+	//SDL_BlitSurface(_resolve_SDL_surface(src), &sr, dst->sdl, &dr);
 
 #ifdef JIVE_PROFILE_BLIT
 	t1 = jive_jiffies();
@@ -1211,12 +1261,14 @@ void jive_surface_blit_alpha(JiveSurface *src, JiveSurface *dst, Uint16 dx, Uint
 	Uint32 t0 = jive_jiffies(), t1;
 #endif //JIVE_PROFILE_BLIT
 
-	SDL_Rect dr;
+	GPU_Rect dr;
 	dr.x = dx + dst->offset_x;
 	dr.y = dy + dst->offset_y;
 
-	SDL_SetAlpha(_resolve_SDL_surface(src), SDL_SRCALPHA, alpha);
-	SDL_BlitSurface(_resolve_SDL_surface(src), 0, dst->sdl, &dr);
+	GPU_Blit(src->sdl, NULL, dst->target, dr.x, dr.y);
+
+	//SDL_SetAlpha(_resolve_SDL_surface(src), SDL_SRCALPHA, alpha);
+	//SDL_BlitSurface(_resolve_SDL_surface(src), 0, dst->sdl, &dr);
 
 #ifdef JIVE_PROFILE_BLIT
 	t1 = jive_jiffies();
@@ -1256,8 +1308,8 @@ int jive_surface_get_bytes(JiveSurface *srf) {
 		return 0;
 	}
 
-	format = srf->sdl->format;
-	return srf->sdl->w * srf->sdl->h * format->BytesPerPixel;
+	//format = srf->sdl->format;
+	return srf->sdl->w * srf->sdl->h * 8;// format->BytesPerPixel;
 }
 
 
@@ -1274,7 +1326,7 @@ void jive_surface_release(JiveSurface *srf) {
 	}
 
 	if (srf->sdl) {
-		SDL_FreeSurface (srf->sdl);
+		GPU_FreeImage (srf->sdl);
 		srf->sdl = NULL;
 	}
 }
@@ -1335,45 +1387,46 @@ JiveSurface *jive_surface_shrinkSurface(JiveSurface *srf, int factorx, int facto
 }
 
 JiveSurface *jive_surface_resize(JiveSurface *srf, int w, int h, bool keep_aspect) {
-	SDL_Surface *srf1_sdl;
-	JiveSurface *srf2;
-	int sw, sh, dw, dh;
-	int ox = 0, oy = 0;
+	return 0;
+	// GPU_Image *srf1_sdl;
+	// JiveSurface *srf2;
+	// int sw, sh, dw, dh;
+	// int ox = 0, oy = 0;
 
-	srf1_sdl = _resolve_SDL_surface(srf);
+	// srf1_sdl = _resolve_SDL_surface(srf);
 
-	if (!srf1_sdl) {
-		LOG_ERROR(log_ui, "Underlying sdl surface already freed, possibly with release()");
-		return NULL;
-	}
+	// if (!srf1_sdl) {
+	// 	LOG_ERROR(log_ui, "Underlying sdl surface already freed, possibly with release()");
+	// 	return NULL;
+	// }
 
-	sw = srf1_sdl->w;
-	sh = srf1_sdl->h;
+	// sw = srf1_sdl->w;
+	// sh = srf1_sdl->h;
 
-	srf2 = jive_surface_newRGBA(w, h);
+	// srf2 = jive_surface_newRGBA(w, h);
 
-	if (keep_aspect) {
-		float w_aspect = (float)w/(float)sw;
-		float h_aspect = (float)h/(float)sh;
-		if (w_aspect <= h_aspect) {
-			dw = w;
-			dh = sh * w_aspect;
-			oy = (h - dh)/2;
-		} else {
-			dh = h;
-			dw = sw * h_aspect;
-			ox = (w - dw)/2;
-		}
-	} else {
-		dh = h;
-		dw = w;
-	}
+	// if (keep_aspect) {
+	// 	float w_aspect = (float)w/(float)sw;
+	// 	float h_aspect = (float)h/(float)sh;
+	// 	if (w_aspect <= h_aspect) {
+	// 		dw = w;
+	// 		dh = sh * w_aspect;
+	// 		oy = (h - dh)/2;
+	// 	} else {
+	// 		dh = h;
+	// 		dw = sw * h_aspect;
+	// 		ox = (w - dw)/2;
+	// 	}
+	// } else {
+	// 	dh = h;
+	// 	dw = w;
+	// }
 
-	LOG_DEBUG(log_ui, "Resize ox: %d oy: %d dw: %d dh: %d sw: %d sh: %d", ox, oy, dw, dh, sw, sh);
+	// LOG_DEBUG(log_ui, "Resize ox: %d oy: %d dw: %d dh: %d sw: %d sh: %d", ox, oy, dw, dh, sw, sh);
 
-	copyResampled(srf2->sdl, srf1_sdl, ox, oy, 0, 0, dw, dh, sw, sh);
+	// copyResampled(srf2->sdl, srf1_sdl, ox, oy, 0, 0, dw, dh, sw, sh);
 
-	return srf2;
+	// return srf2;
 }
 
 void jive_surface_pixelColor(JiveSurface *srf, Sint16 x, Sint16 y, Uint32 color) {
@@ -1986,19 +2039,19 @@ int jiveL_surface_resize(lua_State *L) {
 	  w
 	  h
 	*/
-	JiveSurface *srf1 = *(JiveSurface **)lua_touserdata(L, 1);
-	int w = luaL_checkint(L, 2);
-	int h = luaL_checkint(L, 3);
-	bool keep_aspect = lua_toboolean(L, 4);
+	// JiveSurface *srf1 = *(JiveSurface **)lua_touserdata(L, 1);
+	// int w = luaL_checkint(L, 2);
+	// int h = luaL_checkint(L, 3);
+	// bool keep_aspect = lua_toboolean(L, 4);
 
-	JiveSurface *srf2 = jive_surface_resize(srf1, w, h, keep_aspect);
-	if (srf2) {
-		JiveSurface **p = (JiveSurface **)lua_newuserdata(L, sizeof(JiveSurface *));
-		*p = srf2;
-		luaL_getmetatable(L, "JiveSurface");
-		lua_setmetatable(L, -2);
-		return 1;
-	}
+	// JiveSurface *srf2 = jive_surface_resize(srf1, w, h, keep_aspect);
+	// if (srf2) {
+	// 	JiveSurface **p = (JiveSurface **)lua_newuserdata(L, sizeof(JiveSurface *));
+	// 	*p = srf2;
+	// 	luaL_getmetatable(L, "JiveSurface");
+	// 	lua_setmetatable(L, -2);
+	// 	return 1;
+	// }
 
 	return 0;
 }

@@ -272,13 +272,17 @@ int jiveL_label_layout(lua_State *L) {
 
 	/* align the label, minus the widget width */
 	y = jive_widget_valign((JiveWidget *)peer, peer->text_align, peer->text_h);
-
+	Uint16 maxWidth = 0;
 	for (i=0; i<peer->num_lines; i++) {
 		LabelLine *line = &peer->line[i];
 		Uint16 w, h;
 
 		jive_surface_get_size(line->text_fg, &w, &h);
 
+
+		if (w > maxWidth) {
+			maxWidth = w;
+		}
 		line->label_x = jive_widget_halign((JiveWidget *)peer, peer->text_align, w);
 		line->label_y = y - line->textOffset;
 
@@ -286,7 +290,7 @@ int jiveL_label_layout(lua_State *L) {
 	}
 
 	/* maximum render width */
-	peer->label_w = peer->w.bounds.w - peer->w.padding.left - peer->w.padding.right;
+	peer->label_w = maxWidth;//peer->w.bounds.w - peer->w.padding.left - peer->w.padding.right;
 
 	return 0;
 }
@@ -481,6 +485,8 @@ int jiveL_label_get_preferred_bounds(lua_State *L) {
 
 
 static void jive_label_gc_lines(LabelWidget *peer) {
+	return;
+	
 	size_t i;
 
 	if (!peer->num_lines) {

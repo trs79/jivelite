@@ -123,7 +123,7 @@ void *jive_getpeer(lua_State *L, int index, JivePeerMeta *peerMeta) {
 }
 
 
-void jive_torect(lua_State *L, int index, SDL_Rect *rect) {
+void jive_torect(lua_State *L, int index, GPU_Rect *rect) {
 
 	JIVEL_STACK_CHECK_BEGIN(L);
 
@@ -149,7 +149,7 @@ void jive_torect(lua_State *L, int index, SDL_Rect *rect) {
 }
 
 
-void jive_rect_union(SDL_Rect *a, SDL_Rect *b, SDL_Rect *c) {
+void jive_rect_union(GPU_Rect *a, GPU_Rect *b, GPU_Rect *c) {
 	int x0 = MIN(a->x, b->x);
 	int y0 = MIN(a->y, b->y);
 	int x1 = MAX(a->x + a->w, b->x + b->w);
@@ -162,7 +162,7 @@ void jive_rect_union(SDL_Rect *a, SDL_Rect *b, SDL_Rect *c) {
 }
 
 
-void jive_rect_intersection(SDL_Rect *a, SDL_Rect *b, SDL_Rect *c) {
+void jive_rect_intersection(GPU_Rect *a, GPU_Rect *b, GPU_Rect *c) {
 	int cx0 = a->x;
 	int cy0 = a->y;
 	int cx1 = a->x + a->w;

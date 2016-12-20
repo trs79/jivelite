@@ -12,8 +12,8 @@
 
 #include <SDL_image.h>
 #include <SDL_ttf.h>
-#include <SDL_gfxPrimitives.h>
-#include <SDL_rotozoom.h>
+// #include <SDL_gfxPrimitives.h>
+// #include <SDL_rotozoom.h>
 
 
 /* target frame rate 14 fps (originally) - may be tuned per platform, should be /2 */
@@ -21,7 +21,7 @@
 int jive_frame_rate(void);
 
 #define JIVE_FRAME_RATE jive_frame_rate()
-#define JIVE_FRAME_RATE_DEFAULT 30
+#define JIVE_FRAME_RATE_DEFAULT 60
 
 /* print profile information for blit's */
 #undef JIVE_PROFILE_BLIT
@@ -205,8 +205,8 @@ struct jive_inset {
 };
 
 struct jive_widget {
-	SDL_Rect bounds;
-	SDL_Rect preferred_bounds;
+	GPU_Rect bounds;
+	GPU_Rect preferred_bounds;
 	JiveInset padding;
 	JiveInset border;
 	Uint32 skin_origin;
@@ -287,7 +287,7 @@ struct jive_font {
 	Uint16 size;
 
 	// Specific font functions
-	SDL_Surface *(*draw)(struct jive_font *, Uint32, const char *);
+	GPU_Image *(*draw)(struct jive_font *, Uint32, const char *);
 	int (*width)(struct jive_font *, const char *);
 	void (*destroy)(struct jive_font *);
 
@@ -319,7 +319,7 @@ extern LOG_CATEGORY *log_ui;
 /* extra pump function */
 extern int (*jive_sdlevent_pump)(lua_State *L);
 
-extern int (*jive_sdlfilter_pump)(const SDL_Event *event);
+extern int (*jive_sdlfilter_pump)(void *SDL_EventOKParam, const SDL_Event *event);
 void jive_send_key_event(JiveEventType keyType, JiveKey keyCode, Uint32 ticks);
 void jive_send_gesture_event(JiveGesture code);
 void jive_send_char_press_event(Uint16 unicode);
@@ -343,17 +343,17 @@ void jive_debug_traceback(lua_State *L, int n);
 int jiveL_getframework(lua_State *L);
 int jive_getmethod(lua_State *L, int index, char *method) ;
 void *jive_getpeer(lua_State *L, int index, JivePeerMeta *peerMeta);
-void jive_torect(lua_State *L, int index, SDL_Rect *rect);
-void jive_rect_union(SDL_Rect *a, SDL_Rect *b, SDL_Rect *c);
-void jive_rect_intersection(SDL_Rect *a, SDL_Rect *b, SDL_Rect *c);
+void jive_torect(lua_State *L, int index, GPU_Rect *rect);
+void jive_rect_union(GPU_Rect *a, GPU_Rect *b, GPU_Rect *c);
+void jive_rect_intersection(GPU_Rect *a, GPU_Rect *b, GPU_Rect *c);
 void jive_queue_event(JiveEvent *evt);
 int jive_traceback (lua_State *L);
 
 /* Surface functions */
-JiveSurface *jive_surface_set_video_mode(Uint16 w, Uint16 h, Uint16 bpp, bool fullscreen);
+JiveSurface *jive_surface_set_video_mode(Uint16 w, Uint16 h, Uint16 bpp, GPU_Target *screen, bool fullscreen);
 JiveSurface *jive_surface_newRGB(Uint16 w, Uint16 h);
 JiveSurface *jive_surface_newRGBA(Uint16 w, Uint16 h);
-JiveSurface *jive_surface_new_SDLSurface(SDL_Surface *sdl_surface);
+JiveSurface *jive_surface_new_SDLSurface(GPU_Image *sdl_surface);
 JiveSurface *jive_surface_ref(JiveSurface *srf);
 JiveSurface *jive_surface_load_image(const char *path);
 JiveSurface *jive_surface_load_image_data(const char *data, size_t len);
@@ -362,9 +362,9 @@ int jive_surface_save_bmp(JiveSurface *srf, const char *file);
 int jive_surface_cmp(JiveSurface *a, JiveSurface *b, Uint32 key);
 void jive_surface_get_offset(JiveSurface *src, Sint16 *x, Sint16 *y);
 void jive_surface_set_offset(JiveSurface *src, Sint16 x, Sint16 y);
-void jive_surface_get_clip(JiveSurface *srf, SDL_Rect *r);
-void jive_surface_set_clip(JiveSurface *srf, SDL_Rect *r);
-void jive_surface_push_clip(JiveSurface *srf, SDL_Rect *r, SDL_Rect *pop);
+void jive_surface_get_clip(JiveSurface *srf, GPU_Rect *r);
+void jive_surface_set_clip(JiveSurface *srf, GPU_Rect *r);
+void jive_surface_push_clip(JiveSurface *srf, GPU_Rect *r, GPU_Rect *pop);
 void jive_surface_set_clip_arg(JiveSurface *srf, Uint16 x, Uint16 y, Uint16 w, Uint16 h);
 void jive_surface_get_clip_arg(JiveSurface *srf, Uint16 *x, Uint16 *y, Uint16 *w, Uint16 *h);
 void jive_surface_flip(JiveSurface *srf);
@@ -435,7 +435,7 @@ Uint32 utf8_get_char(const char *ptr, const char **nptr);
 
 
 /* C helper functions */
-void jive_redraw(SDL_Rect *r);
+void jive_redraw(GPU_Rect *r);
 void jive_pushevent(lua_State *L, JiveEvent *event);
 
 void jive_widget_pack(lua_State *L, int index, JiveWidget *data);

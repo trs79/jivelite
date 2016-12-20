@@ -40,6 +40,7 @@
 #define PATH_MAX 256
 #endif
 
+#define JIVE_PROFILE_IMAGE_CACHE
 
 #if defined(WIN32)
 #define DIR_SEPARATOR_CHAR	'\\'
@@ -60,6 +61,8 @@ typedef _W64 int   ssize_t;
 #endif /* !DIR_SEPARATOR_CHAR */
 
 #include <SDL.h>
+#include <SDL_gpu.h>
+
 
 #include "lua.h"
 #include "lauxlib.h"

@@ -20,7 +20,7 @@ static void destroy_ttf_font(JiveFont *font);
 
 static int width_ttf_font(JiveFont *font, const char *str);
 
-static SDL_Surface *draw_ttf_font(JiveFont *font, Uint32 color, const char *str);
+static GPU_Image *draw_ttf_font(JiveFont *font, Uint32 color, const char *str);
 
 
 
@@ -232,12 +232,13 @@ static int width_ttf_font(JiveFont *font, const char *str) {
 	return w;
 }
 
-static SDL_Surface *draw_ttf_font(JiveFont *font, Uint32 color, const char *str) {
+static GPU_Image *draw_ttf_font(JiveFont *font, Uint32 color, const char *str) {
 #ifdef JIVE_PROFILE_BLIT
 	Uint32 t0 = jive_jiffies(), t1;
 #endif //JIVE_PROFILE_BLIT
 	SDL_Color clr;
 	SDL_Surface *srf;
+	GPU_Image *image;
 
 	// don't call render for null strings as it produces an error which we want to hide
 	if (*str == '\0') {
@@ -249,6 +250,11 @@ static SDL_Surface *draw_ttf_font(JiveFont *font, Uint32 color, const char *str)
 	clr.b = (color >> 8) & 0xFF;
 
 	srf = TTF_RenderUTF8_Blended(font->ttf, str, clr);
+	image = GPU_CopyImageFromSurface(srf);
+	image->anchor_x = 0;
+	image->wrap_mode_x = GPU_WRAP_NONE;
+	image->wrap_mode_y = GPU_WRAP_NONE;
+	image->anchor_y = 0;
 
 	if (!srf) {
 		LOG_ERROR(log_ui_draw, "render returned error: %s\n", TTF_GetError());
@@ -270,7 +276,8 @@ static SDL_Surface *draw_ttf_font(JiveFont *font, Uint32 color, const char *str)
 	printf("\tdraw_ttf_font took=%d %s\n", t1-t0, str);
 #endif //JIVE_PROFILE_BLIT
 
-	return srf;
+	SDL_FreeSurface(srf);
+	return image;
 }
 
 JiveSurface *jive_font_draw_text(JiveFont *font, Uint32 color, const char *str) {

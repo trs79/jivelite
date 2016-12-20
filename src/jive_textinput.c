@@ -142,7 +142,7 @@ int jiveL_textinput_draw(lua_State *L) {
 	const char *text;
 	size_t cursor, text_len;
 	int indent;
-	SDL_Rect pop_clip, new_clip;
+	GPU_Rect pop_clip, new_clip;
 	Uint16 text_h, text_x, text_y, text_cy, text_w, cursor_x, cursor_w, cursor_h;
 	const char *validchars, *validchars_end;
 	unsigned int len_1, len_2, len_3;

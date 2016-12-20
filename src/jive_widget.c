@@ -36,7 +36,7 @@ void jive_widget_pack(lua_State *L, int index, JiveWidget *data) {
 
 int jiveL_widget_set_bounds(lua_State *L) {
 	JiveWidget *peer;
-	SDL_Rect bounds;
+	GPU_Rect bounds;
 
 	if (jive_getmethod(L, 1, "checkSkin")) {
 		lua_pushvalue(L, 1);
@@ -380,7 +380,7 @@ int jiveL_widget_redraw(lua_State *L) {
 			if (!offset) {
 				jive_redraw(&peer->bounds);
 			} else {
-				SDL_Rect r;
+				GPU_Rect r;
 				memcpy(&r, &peer->bounds, sizeof(r));
 				r.y += offset;
 				jive_redraw(&r);

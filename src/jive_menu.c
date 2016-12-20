@@ -327,7 +327,7 @@ int jiveL_menu_draw(lua_State *L) {
 	JiveSurface *srf = *(JiveSurface **)lua_touserdata(L, 2);
 	bool drawLayer = luaL_optinteger(L, 3, JIVE_LAYER_ALL) & peer->w.layer;
 	Sint16 old_pixel_offset_x, old_pixel_offset_y, new_pixel_offset_y;
-	SDL_Rect pop_clip, new_clip;
+	GPU_Rect pop_clip, new_clip;
 
 	lua_getfield(L, 1, "accelKey");
 	accelKey = lua_tostring(L, -1);

@@ -335,7 +335,7 @@ int jiveL_textarea_draw(lua_State *L) {
 	TextareaWidget *peer = jive_getpeer(L, 1, &textareaPeerMeta);
 	JiveSurface *srf = *(JiveSurface **)lua_touserdata(L, 2);
 	bool drawLayer = luaL_optinteger(L, 3, JIVE_LAYER_ALL) & peer->w.layer;
-	SDL_Rect pop_clip, new_clip;
+	GPU_Rect pop_clip, new_clip;
 
 	if (!drawLayer || peer->num_lines == 0) {
 		return 0;

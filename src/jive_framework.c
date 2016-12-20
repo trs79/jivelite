@@ -14,12 +14,14 @@
 #endif
 
 int (*jive_sdlevent_pump)(lua_State *L);
-int (*jive_sdlfilter_pump)(const SDL_Event *event);
+int (*jive_sdlfilter_pump)(void *SDL_EventOKParam, const SDL_Event *event);
 
 LOG_CATEGORY *log_ui_draw;
 LOG_CATEGORY *log_ui;
 
-SDL_Rect jive_dirty_region, last_dirty_region;
+GPU_Target* screen;
+
+GPU_Rect jive_dirty_region, last_dirty_region;
 
 /* global counter used to invalidate widget skin and layout */
 Uint32 jive_origin = 0;
@@ -46,13 +48,13 @@ static Uint16 screen_w, screen_h, screen_bpp;
 static bool screen_isfull = false;
 
 struct jive_keymap {
-	SDLKey keysym;
-	SDLMod mod;      // 0 for don't care, otherwise expected SDLmod value
+	SDL_Keycode keysym;
+	SDL_Keymod  mod;      // 0 for don't care, otherwise expected SDLmod value
 	JiveKey keycode;
 };
 
 struct jive_keyir {
-	SDLKey keysym;
+	SDL_Keycode keysym;
 	Uint32 code;
 };
 
@@ -93,7 +95,7 @@ static struct jive_keymap keymap[] = {
 	{ SDLK_KP_PLUS,		0, JIVE_KEY_ADD },
 	{ SDLK_PAGEUP,		0, JIVE_KEY_PAGE_UP },
 	{ SDLK_PAGEDOWN,	0, JIVE_KEY_PAGE_DOWN },
-	{ SDLK_PRINT,		0, JIVE_KEY_PRINT },
+	{ SDLK_PAGEDOWN,		0, JIVE_KEY_PRINT },
 	{ SDLK_SYSREQ,		0, JIVE_KEY_PRINT },
 	{ SDLK_F1,          0, JIVE_KEY_PRESET_1 },
 	{ SDLK_F2,          0, JIVE_KEY_PRESET_2 },
@@ -162,7 +164,7 @@ static struct jive_keyir irmap[] = {
 
 static int process_event(lua_State *L, SDL_Event *event);
 static void process_timers(lua_State *L);
-static int filter_events(const SDL_Event *event);
+static int filter_events(void *SDL_EventOKParam, const SDL_Event *event);
 int jiveL_update_screen(lua_State *L);
 
 int jive_frame_rate(void) {
@@ -208,17 +210,22 @@ void jive_quit(void) {
 }
 
 static int jiveL_initSDL(lua_State *L) {
-	const SDL_VideoInfo *video_info;
+	const SDL_DisplayMode video_info;
+
 	JiveSurface *srf, *splash, *icon;
 	JiveSurface **p;
 	Uint16 splash_w, splash_h;
+
+
+	
+	
 
 	/* logging */
 	log_ui_draw = LOG_CATEGORY_GET("jivelite.ui.draw");
 	log_ui = LOG_CATEGORY_GET("jivelite.ui");
 
 	/* linux fbcon does not need a mouse */
-	SDL_putenv("SDL_NOMOUSE=1");
+	//SDL_putenv("SDL_NOMOUSE=1");
 
 	if(SDL_getenv("JIVE_NOCURSOR")) {
 		pointer_enable = false;
@@ -229,32 +236,47 @@ static int jiveL_initSDL(lua_State *L) {
 		LOG_ERROR(log_ui,"jive_quit atexit failed");
 	}
 
-	/* initialise SDL */
-	if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+	/* initialise SDL_GPU */
+	screen = GPU_Init(800, 600, GPU_DEFAULT_INIT_FLAGS);
+	if (screen == NULL)
+		return -1;
+
+	/*if (SDL_Init(SDL_INIT_VIDEO) < 0) {
 		LOG_ERROR(log_ui_draw, "SDL_Init(V|T|A): %s\n", SDL_GetError());
 		exit(-1);
-	}
+	}*/
 
 	/* report video info */
-	if ((video_info = SDL_GetVideoInfo())) {
-		LOG_INFO(log_ui_draw, "%d,%d %d bits/pixel %d bytes/pixel [R<<%d G<<%d B<<%d]", video_info->current_w, video_info->current_h, video_info->vfmt->BitsPerPixel, video_info->vfmt->BytesPerPixel, video_info->vfmt->Rshift, video_info->vfmt->Gshift, video_info->vfmt->Bshift);
-		LOG_INFO(log_ui_draw, "Hardware acceleration %s available", video_info->hw_available?"is":"is not");
-		LOG_INFO(log_ui_draw, "Window manager %s available", video_info->wm_available?"is":"is not");
+	for (int i = 0; i < SDL_GetNumVideoDisplays(); ++i) {
+		int should_be_zero = SDL_GetCurrentDisplayMode(i, &video_info);
+
+		if (should_be_zero != 0)
+			// In case of error...
+			LOG_INFO(log_ui_draw, "Could not get display mode for video display #%d: %s", i, SDL_GetError());
+
+		else
+			// On success, print the current display mode.
+			LOG_INFO(log_ui_draw, "Display #%d: current display mode is %dx%dpx @ %dhz.", i, video_info.w, video_info.h, video_info.refresh_rate);
 	}
+	//if ((video_info = SDL_GetVideoInfo())) {
+	//	LOG_INFO(log_ui_draw, "%d,%d %d bits/pixel %d bytes/pixel [R<<%d G<<%d B<<%d]", video_info->current_w, video_info->current_h, video_info->vfmt->BitsPerPixel, video_info->vfmt->BytesPerPixel, video_info->vfmt->Rshift, video_info->vfmt->Gshift, video_info->vfmt->Bshift);
+	//	LOG_INFO(log_ui_draw, "Hardware acceleration %s available", video_info->hw_available?"is":"is not");
+	//	LOG_INFO(log_ui_draw, "Window manager %s available", video_info->wm_available?"is":"is not");
+	//}
 
 	LOG_INFO(log_ui_draw, "Using %d frames per second\n", jive_frame_rate());
 
 	/* Register callback for additional events (used for multimedia keys)*/
 	SDL_EventState(SDL_SYSWMEVENT,SDL_ENABLE);
-	SDL_SetEventFilter(filter_events);
+	SDL_SetEventFilter(filter_events, NULL);
 
 	platform_init(L);
 
 	/* open window */
-	SDL_WM_SetCaption("JiveLite", "JiveLite");
+//	SDL_WM_SetCaption("JiveLite", "JiveLite");
 	SDL_ShowCursor(SDL_DISABLE);
-	SDL_EnableKeyRepeat (SDL_DEFAULT_REPEAT_DELAY, 100);
-	SDL_EnableUNICODE(1);
+	//SDL_EnableKeyRepeat ();
+	//SDL_EnableUNICODE(1);
 
 	/* load the icon */
 	icon = jive_surface_load_image("jive/app.png");
@@ -263,27 +285,29 @@ static int jiveL_initSDL(lua_State *L) {
 		jive_surface_free(icon);
 	}
 
-	screen_w = video_info->current_w;
-	screen_h = video_info->current_h;
+	screen_w = video_info.w;
+	screen_h = video_info.h;
 
-	screen_bpp = video_info->vfmt->BitsPerPixel;
+	screen_bpp = 8;// video_info->vfmt->BitsPerPixel;
 
 	splash = jive_surface_load_image("jive/splash.png");
 	if (splash) {
 		jive_surface_get_size(splash, &splash_w, &splash_h);
-		if (video_info->wm_available) {
+		if (true) { //video_info->wm_available) {
 			screen_w = splash_w;
 			screen_h = splash_h;
 		}
 	}
 
-	srf = jive_surface_set_video_mode(screen_w, screen_h, screen_bpp, video_info->wm_available ? false : true);
+	srf = jive_surface_set_video_mode(screen_w, screen_h, screen_bpp, screen, false/*video_info->wm_available ? false : true*/);
+
 	if (!srf) {
 		LOG_ERROR(log_ui_draw, "Video mode not supported: %dx%d\n", screen_w, screen_h);
 		exit(-1);
 	}
 
 	if (splash) {
+
 		jive_surface_blit(splash, srf, MAX(0, (screen_w - splash_w) / 2), MAX(0, (screen_h - splash_h) / 2));
 		jive_surface_flip(srf);
 	}
@@ -322,10 +346,10 @@ static int jiveL_initSDL(lua_State *L) {
 	return 0;
 }
 
-static int filter_events(const SDL_Event *event)
+static int filter_events(void *SDL_EventOKParam, const SDL_Event *event)
 {
 	if (jive_sdlfilter_pump) {
-		return jive_sdlfilter_pump(event);
+		return jive_sdlfilter_pump(SDL_EventOKParam, event);
 	}
 	
 	return 1;
@@ -412,7 +436,7 @@ static int jiveL_process_events(lua_State *L) {
 
 	/* process events */
 	process_timers(L);
-	while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_ALLEVENTS) > 0 ) {
+	while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT) > 0 ) {
 		r |= process_event(L, &event);
 	}
 
@@ -565,7 +589,7 @@ static int _draw_screen(lua_State *L) {
 		drawn = true;
 	}
 	else if (jive_dirty_region.w || standalone_draw) {
-		SDL_Rect dirty;
+		GPU_Rect dirty;
 
 		/* only redraw dirty region for non standalone draws */
 		if (!standalone_draw) {
@@ -690,7 +714,7 @@ int jiveL_update_screen(lua_State *L) {
 }
 
 
-void jive_redraw(SDL_Rect *r) {
+void jive_redraw(GPU_Rect *r) {
 	if (jive_dirty_region.w) {
 		jive_rect_union(&jive_dirty_region, r, &jive_dirty_region);
 	}
@@ -698,12 +722,13 @@ void jive_redraw(SDL_Rect *r) {
 		memcpy(&jive_dirty_region, r, sizeof(jive_dirty_region));
 	}
 
-	//printf("DIRTY: %d,%d %dx%d\n", jive_dirty_region.x, jive_dirty_region.y, jive_dirty_region.w, jive_dirty_region.h);
+
+	//printf("DIRTY: %f,%f %fx%f\n", jive_dirty_region.x, jive_dirty_region.y, jive_dirty_region.w, jive_dirty_region.h);
 }
 
 
 int jiveL_redraw(lua_State *L) {
-	SDL_Rect r;
+	GPU_Rect r;
 
 	/* stack top:
 	 * -2: framework
@@ -863,7 +888,7 @@ int jiveL_set_video_mode(lua_State *L) {
 	JiveSurface **p;
 	Uint16 w, h, bpp;
 	bool isfull;
-	const SDL_VideoInfo *video_info;
+	//const SDL_VideoInfo *video_info;
 
 	/* stack is:
 	 * 1: framework
@@ -878,9 +903,11 @@ int jiveL_set_video_mode(lua_State *L) {
 	bpp = luaL_optinteger(L, 4, 16);
 	isfull = lua_toboolean(L, 5);
 
+	
+
 	// force fullscreen if no window manager is available - this prevents sdl crashing on some hardware
-	video_info = SDL_GetVideoInfo();
-	if (!video_info->wm_available) {
+	//video_info = SDL_GetVideoInfo();
+	if (false) { //!video_info->wm_available) {
 		isfull = true;
 	}
 
@@ -890,9 +917,9 @@ int jiveL_set_video_mode(lua_State *L) {
 	    isfull == screen_isfull) {
 		return 0;
 	}
-
-	/* update video mode */
-	srf = jive_surface_set_video_mode(w, h, bpp, isfull);
+	/* up
+	date video mode */
+	srf = jive_surface_set_video_mode(w, h, bpp, screen, isfull);
 	if (!srf) {
 		LOG_ERROR(log_ui_draw, "Video mode not supported: %dx%d\n", w, h);
 		exit(-1);
@@ -1063,17 +1090,17 @@ static int process_event(lua_State *L, SDL_Event *event) {
 
 
 	case SDL_MOUSEBUTTONDOWN:
-		/* map the mouse scroll wheel to up/down */
-		if (event->button.button == SDL_BUTTON_WHEELUP) {
-			jevent.type = JIVE_EVENT_SCROLL;
-			--(jevent.u.scroll.rel);
-			break;
-		}
-		else if (event->button.button == SDL_BUTTON_WHEELDOWN) {
-			jevent.type = JIVE_EVENT_SCROLL;
-			++(jevent.u.scroll.rel);
-			break;
-		}
+		///* map the mouse scroll wheel to up/down */
+		//if (event->button.button == SDL_BUTTON_WHEELUP) {
+		//	jevent.type = JIVE_EVENT_SCROLL;
+		//	--(jevent.u.scroll.rel);
+		//	break;
+		//}
+		//else if (event->button.button == SDL_BUTTON_WHEELDOWN) {
+		//	jevent.type = JIVE_EVENT_SCROLL;
+		//	++(jevent.u.scroll.rel);
+		//	break;
+		//}
 
 		// Fall through
 
@@ -1219,15 +1246,15 @@ static int process_event(lua_State *L, SDL_Event *event) {
 
 		if (entry->keysym == SDLK_UNKNOWN) {
 			// handle regular character keys ('a', 't', etc..)
-			if (event->type == SDL_KEYDOWN && event->key.keysym.unicode != 0) {
-				jevent.type = JIVE_EVENT_CHAR_PRESS;
-				if (event->key.keysym.sym == SDLK_BACKSPACE) {
-					//special case for Backspace, where value set is not ascii value, instead pass backspace ascii value
-					jevent.u.text.unicode = 8;
-				} else {
-					jevent.u.text.unicode = event->key.keysym.unicode;
-				}
-			}
+			//if (event->type == SDL_KEYDOWN && event->key.keysym.unicode != 0) {
+			//	jevent.type = JIVE_EVENT_CHAR_PRESS;
+			//	if (event->key.keysym.sym == SDLK_BACKSPACE) {
+			//		//special case for Backspace, where value set is not ascii value, instead pass backspace ascii value
+			//		jevent.u.text.unicode = 8;
+			//	} else {
+			//		jevent.u.text.unicode = event->key.keysym.unicode;
+			//	}
+			//}
 		}
 
 		/* handle pgup/upgn and cursors as repeatable keys */

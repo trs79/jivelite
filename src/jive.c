@@ -536,7 +536,7 @@ int main (int argc, char **argv) {
 	lua_State *L;
 
 	// say hello
-#if !defined(WIN32)
+#if defined(WIN32)
 	l_message(NULL, "\nJiveLite " JIVE_VERSION);
 #endif
 	
