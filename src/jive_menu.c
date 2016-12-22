@@ -377,18 +377,27 @@ int jiveL_menu_draw(lua_State *L) {
 
 	/* draw acceleration key letter */
 	if (drawLayer && accelKey) {
-		JiveSurface *txt;
+	
+
+		JiveDrawText *txt;
 		Uint16 x, y, txt_w, txt_h;
 
 		txt = jive_font_draw_text(peer->font, peer->fg, accelKey);
 
-		jive_surface_get_size(txt, &txt_w, &txt_h);
+		GPU_ShaderBlock block = GPU_LoadShaderBlock(txt->font->shader_program_number, "gpu_Vertex", "gpu_TexCoord", "gpu_Color", "gpu_ModelViewProjectionMatrix");
+
+		GPU_ActivateShaderProgram(txt->font->shader_program_number, &block);
+
+		//jive_surface_get_size(txt, &txt_w, &txt_h);
+		txt_w = txt->width;
+		txt_h = 200;
 
 		x = (peer->w.bounds.x + peer->w.bounds.w - txt_w) / 2;
 		y = (peer->w.bounds.y + peer->w.bounds.h - txt_h) / 2;
-		jive_surface_blit(txt, srf, x, y);
+		jive_surface_blit_text(txt, srf, x, y);
+		GPU_ActivateShaderProgram(0, NULL);
 
-		jive_surface_free(txt);
+		free(txt);
 	}
 
 	/* draw header widget */

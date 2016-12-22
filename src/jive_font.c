@@ -21,7 +21,48 @@ static char *font_cache =
 
 GPU_Image *atlas_image = NULL;
 
+// todo, fix extern
+extern GPU_Target *main_screen;
+
 Uint32 shader_program_number;
+
+#define GPU_TEXT_FRAGMENT_SHADER_SOURCE_GLES \
+"#version 100\n\
+#ifdef GL_FRAGMENT_PRECISION_HIGH\n\
+precision highp float;\n\
+#else\n\
+precision mediump float;\n\
+#endif\n\
+precision mediump int;\n\
+\
+varying mediump vec4 color;\n\
+varying vec2 texCoord;\n\
+\
+uniform sampler2D tex;\n\
+\
+void main(void)\n\
+{\n\
+	float a = texture2D(tex, texCoord).a; \n\
+	gl_FragColor = vec4(color.rgb, color.a*a); \n\
+}"
+
+#define GPU_TEXT_VERTEX_SHADER_SOURCE_GLES \
+"#version 100\n\
+precision highp float;\n\
+precision mediump int;\n\
+\
+attribute vec2 gpu_Vertex;\n\
+attribute mediump vec4 gpu_Color;\n\
+uniform mat4 gpu_ModelViewProjectionMatrix;\n\
+\
+varying mediump vec4 color;\n\
+\
+void main(void)\n\
+{\n\
+	color = gpu_Color;\n\
+	gl_Position = gpu_ModelViewProjectionMatrix * vec4(gpu_Vertex, 0.0, 1.0);\n\
+}"
+
 
 
 #define GPU_TEXT_FRAGMENT_SHADER_SOURCE \
@@ -92,12 +133,22 @@ JiveFont *jive_font_load(const char *name, Uint16 size) {
 			exit(-1);
 		}
 
-		int v = GPU_CompileShader(GPU_VERTEX_SHADER, GPU_TEXT_VERTEX_SHADER_SOURCE);
-		int p = GPU_CompileShader(GPU_FRAGMENT_SHADER, GPU_TEXT_FRAGMENT_SHADER_SOURCE);
+		int v, p;
+
+		GPU_RendererID id = GPU_GetRendererID(GPU_RENDERER_GLES_2);
+
+		if (id.renderer == GPU_RENDERER_GLES_2) {
+			v = GPU_CompileShader(GPU_VERTEX_SHADER, GPU_TEXT_VERTEX_SHADER_SOURCE_GLES);
+			p = GPU_CompileShader(GPU_FRAGMENT_SHADER, GPU_TEXT_FRAGMENT_SHADER_SOURCE_GLES);
+		}
+		else {
+			v = GPU_CompileShader(GPU_VERTEX_SHADER, GPU_TEXT_VERTEX_SHADER_SOURCE);
+			p = GPU_CompileShader(GPU_FRAGMENT_SHADER, GPU_TEXT_FRAGMENT_SHADER_SOURCE);
+		}
 
 		shader_program_number = GPU_LinkShaders(v, p);
 
-		atlas = texture_atlas_new(2048, 1024, 1);
+		atlas = texture_atlas_new(2048, 2048, 1);
 	}
 
 	ptr = calloc(sizeof(JiveFont), 1);
@@ -111,7 +162,7 @@ JiveFont *jive_font_load(const char *name, Uint16 size) {
 	ptr->t_font = texture_font_new_from_file(atlas, size, name);
 	size_t missed = texture_font_load_glyphs(ptr->t_font, font_cache);
 
-	assert(missed == 0);
+	//assert(missed == 0);
 
 	ptr->shader_program_number = shader_program_number;
 	ptr->refcount = 1;

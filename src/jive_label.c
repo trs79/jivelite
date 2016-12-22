@@ -9,7 +9,7 @@
 
 
 /* actual FPS will only run at half of the JIVE_FRAME_RATE */
-#define SCROLL_FPS	(JIVE_FRAME_RATE / 2)
+#define SCROLL_FPS	(JIVE_FRAME_RATE / 5)
 #define SCROLL_OFFSET_STEP_MINIMUM	5
 #define FONT_SCROLL_FACTOR	5
 
@@ -406,9 +406,9 @@ int jiveL_label_draw(lua_State *L) {
 	}
 	LabelLine *line = &peer->line[0];
 
-	GPU_ShaderBlock block = GPU_LoadShaderBlock(line->text_sh->font->shader_program_number, "gpu_Vertex", "gpu_TexCoord", "gpu_Color", "gpu_ModelViewProjectionMatrix");
+	GPU_ShaderBlock block = GPU_LoadShaderBlock(line->text_fg->font->shader_program_number, "gpu_Vertex", "gpu_TexCoord", "gpu_Color", "gpu_ModelViewProjectionMatrix");
 
-	GPU_ActivateShaderProgram(line->text_sh->font->shader_program_number, &block);
+	GPU_ActivateShaderProgram(line->text_fg->font->shader_program_number, &block);
 
 
 	for (i = 0; i < peer->num_lines; i++) {
@@ -546,7 +546,6 @@ static void jive_label_gc_formats(LabelWidget *peer) {
 
 
 int jiveL_label_gc(lua_State *L) {
-	return;
 	LabelWidget *peer;
 
 	luaL_checkudata(L, 1, labelPeerMeta.magic);

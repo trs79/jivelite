@@ -238,7 +238,11 @@ static int jiveL_initSDL(lua_State *L) {
 
 	/* initialise SDL_GPU */
 	
-	GPU_RendererID id = GPU_GetRendererID(GPU_RENDERER_OPENGL_3);
+	GPU_RendererID id = GPU_GetRendererID(GPU_RENDERER_GLES_2);
+
+	if (id.renderer == GPU_RENDERER_UNKNOWN) {
+		id = GPU_GetRendererID(GPU_RENDERER_OPENGL_3);
+	}
 
 	screen = GPU_InitRenderer(id.renderer, 800, 600, GPU_DEFAULT_INIT_FLAGS);
 	if (screen == NULL)
@@ -502,10 +506,11 @@ static int _draw_screen(lua_State *L) {
 
 	srf = *(JiveSurface **)lua_touserdata(L, 2);
 	
+	
+
 	standalone_draw = true;// lua_toboolean(L, 3);
 
-	/* Exit if we have no windows, nothing to draw */
-	lua_getfield(L, 1, "windowStack");
+	/* Exit if we have no windows, nothing to draw */	lua_getfield(L, 1, "windowStack");
 	if (lua_objlen(L, -1) == 0) {
 		lua_pop(L, 1);
 
@@ -577,7 +582,7 @@ static int _draw_screen(lua_State *L) {
 	lua_getfield(L, 1, "transition");
 	if (!lua_isnil(L, -1)) {
 		/* Draw background */
-		jive_surface_set_clip(srf, NULL);
+		//jive_surface_set_clip(srf, NULL);
 		jive_tile_set_alpha(jive_background, 0); // no alpha channel
 		jive_tile_blit(jive_background, srf, 0, 0, screen_w, screen_h);
 
@@ -604,6 +609,8 @@ static int _draw_screen(lua_State *L) {
 		printf("REDRAW: %d,%d %dx%d\n", jive_dirty_region.x, jive_dirty_region.y, jive_dirty_region.w, jive_dirty_region.h);
 		printf("--> %d,%d %dx%d\n", dirty.x, dirty.y, dirty.w, dirty.h);
 #endif
+
+		GPU_Clear(screen);
 
 		/* Draw background */
 		jive_tile_blit(jive_background, srf, 0, 0, screen_w, screen_h);
@@ -689,6 +696,7 @@ int jiveL_update_screen(lua_State *L) {
 		return 0;
 	}
 
+	
 	lua_pushcfunction(L, jive_traceback);  /* push traceback function */
 
 	lua_pushcfunction(L, _draw_screen);
@@ -698,6 +706,7 @@ int jiveL_update_screen(lua_State *L) {
 	lua_getfield(L, -1, "surface");
 	lua_replace(L, -2);
 	screen = *(JiveSurface **)lua_touserdata(L, -1);
+
 
 	lua_pushboolean(L, 0);
 
