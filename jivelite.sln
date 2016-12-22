@@ -1,30 +1,57 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
-VisualStudioVersion = 14.0.24720.0
+VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jivelite", "jivelite.vcxproj", "{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}"
 EndProject
+Project("{5697748A-77EF-44CA-8824-4F5637E5945B}") = "lua", "Debug\lua.luaproj", "{E439935D-B2A2-46AE-856D-2AA408428F33}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
 		Debug|Win32 = Debug|Win32
 		Debug|x64 = Debug|x64
+		Release_NoSTDIO|Any CPU = Release_NoSTDIO|Any CPU
 		Release_NoSTDIO|Win32 = Release_NoSTDIO|Win32
 		Release_NoSTDIO|x64 = Release_NoSTDIO|x64
+		Release|Any CPU = Release|Any CPU
 		Release|Win32 = Release|Win32
 		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Debug|Any CPU.ActiveCfg = Debug|Win32
 		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Debug|Win32.ActiveCfg = Debug|Win32
 		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Debug|Win32.Build.0 = Debug|Win32
 		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Debug|x64.ActiveCfg = Debug|Win32
+		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Release_NoSTDIO|Any CPU.ActiveCfg = Release|Win32
+		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Release_NoSTDIO|Any CPU.Build.0 = Release|Win32
 		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Release_NoSTDIO|Win32.ActiveCfg = Release|Win32
 		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Release_NoSTDIO|Win32.Build.0 = Release|Win32
 		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Release_NoSTDIO|x64.ActiveCfg = Release|Win32
 		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Release_NoSTDIO|x64.Build.0 = Release|Win32
+		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Release|Any CPU.ActiveCfg = Release|Win32
 		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Release|Win32.ActiveCfg = Release|Win32
 		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Release|Win32.Build.0 = Release|Win32
 		{63E48DB8-DCA0-4ED7-AD03-3AC5EB6CB296}.Release|x64.ActiveCfg = Release|Win32
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Debug|Win32.ActiveCfg = Debug|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Debug|Win32.Build.0 = Debug|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Debug|x64.Build.0 = Debug|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Release_NoSTDIO|Any CPU.ActiveCfg = Release|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Release_NoSTDIO|Any CPU.Build.0 = Release|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Release_NoSTDIO|Win32.ActiveCfg = Release|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Release_NoSTDIO|Win32.Build.0 = Release|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Release_NoSTDIO|x64.ActiveCfg = Release|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Release_NoSTDIO|x64.Build.0 = Release|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Release|Win32.ActiveCfg = Release|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Release|Win32.Build.0 = Release|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Release|x64.ActiveCfg = Release|Any CPU
+		{E439935D-B2A2-46AE-856D-2AA408428F33}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

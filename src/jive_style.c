@@ -621,7 +621,7 @@ JiveFont *jive_style_font(lua_State *L, int index, const char *key)  {
 	value = *(JiveFont **)lua_touserdata(L, -1);
 	lua_pop(L, 1);
 
-	assert(value);
+	//assert(value);
 
 	JIVEL_STACK_CHECK_END(L);
 

@@ -197,6 +197,7 @@ static void _load_image (Uint16 index, bool hasAlphaFlags, Uint32 alphaFlags) {
 
 	//tmp = IMG_Load(image->path);
 	tmp = GPU_LoadImage(image->path);
+	tmp->snap_mode = GPU_SNAP_POSITION;
 	tmp->anchor_x = 0;
 	tmp->anchor_y = 0;
 
@@ -995,11 +996,13 @@ JiveSurface *jive_surface_load_image(const char *path) {
 
 
 JiveSurface *jive_surface_load_image_data(const char *data, size_t len) {
-	return NULL;
 	SDL_RWops *src = SDL_RWFromConstMem(data, (int) len);
-	SDL_Surface *surface = IMG_Load_RW(src, 1);
+	SDL_Surface *surface = GPU_LoadSurface_RW(src, 1);
 
 	GPU_Image *sdl = GPU_CopyImageFromSurface(surface);
+	sdl->anchor_x = 0;
+	sdl->anchor_y = 0;
+	sdl->snap_mode = GPU_SNAP_POSITION;
 
 	JiveSurface *srf = calloc(sizeof(JiveSurface), 1);
 	srf->refcount = 1;
@@ -1224,14 +1227,87 @@ void jive_surface_blit(JiveSurface *src, JiveSurface *dst, Uint16 dx, Uint16 dy)
 
 	resolved->anchor_x = 0;
 	resolved->anchor_y = 0;
-
-	GPU_Clear(dst->target);
+	//
+	//GPU_Clear(dst->target);
 	GPU_Blit(_resolve_SDL_surface(src), NULL, dst->target, dr.x, dr.y);
 	//SDL_BlitSurface(_resolve_SDL_surface(src), 0, dst->sdl, &dr);
 
 #ifdef JIVE_PROFILE_BLIT
 	t1 = jive_jiffies();
 	printf("\tjive_surface_blit took=%d\n", t1-t0);
+#endif //JIVE_PROFILE_BLIT
+}
+
+// --------------------------------------------------------------- add_text ---
+void add_text(JiveDrawText *text, GPU_Rect *dst, GPU_Target *target)
+{
+	size_t i;
+	//float r = color->red, g = color->green, b = color->blue, a = color->alpha;
+
+	GPU_Rect src;
+
+	for (i = 0; i < strlen(text->str); ++i)
+	{
+		texture_glyph_t *glyph = texture_font_get_glyph(text->font->t_font, text->str + i);
+
+		if (glyph != NULL)
+		{
+			float kerning = 0.0f;
+			if (i > 0)
+			{
+				kerning = texture_glyph_get_kerning(glyph, text->str + i - 1);
+			}
+			dst->x += kerning;
+
+			float x0 = (dst->x + glyph->offset_x);
+			float y0 = (dst->y - glyph->offset_y);
+
+			src.x = glyph->s0 * text->atlas_image->w;
+			src.y = glyph->t0 * text->atlas_image->h;
+			src.w = glyph->width;
+			src.h = glyph->height;
+
+			/*float s0 = glyph->s0;
+			float t0 = glyph->t0;
+			float s1 = glyph->s1;
+			float t1 = glyph->t1;
+			GLuint indices[6] = { 0,1,2, 0,2,3 };
+			vertex_t vertices[4] = { { x0,y0,0,  s0,t0,  r,g,b,a },
+			{ x0,y1,0,  s0,t1,  r,g,b,a },
+			{ x1,y1,0,  s1,t1,  r,g,b,a },
+			{ x1,y0,0,  s1,t0,  r,g,b,a } };
+			vertex_buffer_push_back(buffer, vertices, 4, indices, 6);*/
+
+			//GPU_BlitTransformX(text->atlas_image, &src, target, dst->x, dst->y, 0, 0, 0, 1, -1);
+
+			//GPU_SetSnapMode(text->atlas_image, GPU_SNAP_NONE);
+			
+			GPU_Blit(text->atlas_image, &src, target, x0, y0);
+			
+			dst->x += glyph->advance_x;
+		}
+	}
+}
+
+void jive_surface_blit_text(JiveDrawText *text, JiveSurface *dst, Uint16 dx, Uint16 dy) {
+#ifdef JIVE_PROFILE_BLIT
+	Uint32 t0 = jive_jiffies(), t1;
+#endif //JIVE_PROFILE_BLIT
+
+	GPU_Rect dr;
+
+	dr.x = dx + dst->offset_x;
+	dr.y = dy + dst->offset_y + (text->font->t_font->height/1.35);
+
+
+	GPU_SetColor(text->atlas_image, text->color);
+	add_text(text, &dr, dst->target);
+	
+	//GPU_Blit(text->atlas_image, NULL, dst->target, dr.x, dr.y);
+
+#ifdef JIVE_PROFILE_BLIT
+	t1 = jive_jiffies();
+	printf("\tjive_surface_blit took=%d\n", t1 - t0);
 #endif //JIVE_PROFILE_BLIT
 }
 

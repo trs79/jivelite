@@ -21,8 +21,8 @@
                         // this gets round SDLs limitation on max surface width
 
 typedef struct label_line {
-	JiveSurface *text_sh;
-	JiveSurface *text_fg;
+	JiveDrawText *text_sh;
+	JiveDrawText *text_fg;
 	Uint16 label_x, label_y; // line position
 	Uint16 lineHeight;       // line height
 	Uint16 textOffset;
@@ -230,7 +230,9 @@ static void prepare(lua_State *L) {
 		line->text_fg = jive_font_draw_text(font, fg, tmp);
 
 		/* label dimensions */
-		jive_surface_get_size(line->text_fg, &width, NULL);
+		//jive_surface_get_size(line->text_fg, &width, NULL);
+		width = line->text_fg->width;
+		
 		max_width = MAX(max_width, width);
 		total_height += height;
 
@@ -275,10 +277,10 @@ int jiveL_label_layout(lua_State *L) {
 	Uint16 maxWidth = 0;
 	for (i=0; i<peer->num_lines; i++) {
 		LabelLine *line = &peer->line[i];
-		Uint16 w, h;
+		//Uint16 w, h
+		//jive_surface_get_size(line->text_fg, &w, &h);
 
-		jive_surface_get_size(line->text_fg, &w, &h);
-
+		float w = line->text_fg->width;
 
 		if (w > maxWidth) {
 			maxWidth = w;
@@ -290,7 +292,7 @@ int jiveL_label_layout(lua_State *L) {
 	}
 
 	/* maximum render width */
-	peer->label_w = maxWidth;//peer->w.bounds.w - peer->w.padding.left - peer->w.padding.right;
+	peer->label_w = peer->w.bounds.w - peer->w.padding.left - peer->w.padding.right;
 
 	return 0;
 }
@@ -402,13 +404,21 @@ int jiveL_label_draw(lua_State *L) {
 	if (!(drawLayer && peer->num_lines)) {
 		return 0;
 	}
+	LabelLine *line = &peer->line[0];
+
+	GPU_ShaderBlock block = GPU_LoadShaderBlock(line->text_sh->font->shader_program_number, "gpu_Vertex", "gpu_TexCoord", "gpu_Color", "gpu_ModelViewProjectionMatrix");
+
+	GPU_ActivateShaderProgram(line->text_sh->font->shader_program_number, &block);
+
 
 	for (i = 0; i < peer->num_lines; i++) {
 		Uint16 w, h, o, s;
 		Uint16 text_w;
 		LabelLine *line = &peer->line[i];
 
-		jive_surface_get_size(line->text_fg, &w, &h);
+		//jive_surface_get_size(line->text_fg, &w, &h);
+		w = line->text_fg->width;
+		h = 100;
 
 	
 		/* second text when scrolling */
@@ -417,31 +427,40 @@ int jiveL_label_draw(lua_State *L) {
 			o = 0;
 		}
 
+
 		s = peer->text_w - o + SCROLL_PAD_RIGHT;
 		text_w = peer->label_w;
 
 		/* shadow text */
 		if (line->text_sh) {
-			jive_surface_blit_clip(line->text_sh, o, 0, text_w, h,
-					       srf, peer->w.bounds.x + line->label_x + 1, peer->w.bounds.y + line->label_y + 1);
+			/*jive_surface_blit_clip(line->text_sh, o, 0, text_w, h,
+					       srf, peer->w.bounds.x + line->label_x + 1, peer->w.bounds.y + line->label_y + 1);*/
+
+			jive_surface_blit_text(line->text_sh, srf, peer->w.bounds.x + line->label_x + 1, peer->w.bounds.y + line->label_y + 1);
 
 			if (o && s < text_w) {
-				Uint16 len = MAX(0, text_w - s);
+				/*Uint16 len = MAX(0, text_w - s);
 				jive_surface_blit_clip(line->text_sh, 0, 0, len, h,
-						       srf, peer->w.bounds.x + line->label_x + s + 1, peer->w.bounds.y + line->label_y + 1);
+						       srf, peer->w.bounds.x + line->label_x + s + 1, peer->w.bounds.y + line->label_y + 1);*/
 			} 
 		}
 
 		/* foreground text */
-		jive_surface_blit_clip(line->text_fg, o, 0, text_w, h,
-				       srf, peer->w.bounds.x + line->label_x, peer->w.bounds.y + line->label_y);
+		/*jive_surface_blit_clip(line->text_fg, o, 0, text_w, h,
+				       srf, peer->w.bounds.x + line->label_x, peer->w.bounds.y + line->label_y);*/
+
+		jive_surface_blit_text(line->text_fg, srf, peer->w.bounds.x + line->label_x, peer->w.bounds.y + line->label_y);
 
 		if (o && s < text_w) {
 			Uint16 len = MAX(0, text_w - s);
-			jive_surface_blit_clip(line->text_fg, 0, 0, len, h,
-					       srf, peer->w.bounds.x + line->label_x + s, peer->w.bounds.y + line->label_y);
+
+			
+			/*jive_surface_blit_clip(line->text_fg, 0, 0, len, h,
+					       srf, peer->w.bounds.x + line->label_x + s, peer->w.bounds.y + line->label_y);*/
 		} 
 	}
+
+	GPU_ActivateShaderProgram(0, NULL);
 
 	return 0;
 }
@@ -485,8 +504,6 @@ int jiveL_label_get_preferred_bounds(lua_State *L) {
 
 
 static void jive_label_gc_lines(LabelWidget *peer) {
-	return;
-	
 	size_t i;
 
 	if (!peer->num_lines) {
@@ -495,10 +512,10 @@ static void jive_label_gc_lines(LabelWidget *peer) {
 
 	for (i=0; i<peer->num_lines; i++) {
 		if (peer->line[i].text_sh) {
-			jive_surface_free(peer->line[i].text_sh);
+			free(peer->line[i].text_sh);
 		}
 		if (peer->line[i].text_fg) {
-			jive_surface_free(peer->line[i].text_fg);
+			free(peer->line[i].text_fg);
 		}
 	}
 	free(peer->line);
@@ -529,6 +546,7 @@ static void jive_label_gc_formats(LabelWidget *peer) {
 
 
 int jiveL_label_gc(lua_State *L) {
+	return;
 	LabelWidget *peer;
 
 	luaL_checkudata(L, 1, labelPeerMeta.magic);

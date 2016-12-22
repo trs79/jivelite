@@ -441,7 +441,7 @@ int jiveL_textarea_draw(lua_State *L) {
 	bottom_line = top_line + visible_lines;
 
 	for (i = top_line; i < bottom_line + 1 && i < num_lines ; i++) {
-		JiveSurface *tsrf;
+		JiveDrawText *tsrf;
 		int x;
 
 		int line = peer->lines[i];
@@ -470,14 +470,18 @@ int jiveL_textarea_draw(lua_State *L) {
 		/* shadow text */
 		if (peer->is_sh) {
 			tsrf = jive_font_draw_text(peer->font, peer->sh, &text[line]);
-			jive_surface_blit(tsrf, srf, x + 1, y + 1);
-			jive_surface_free(tsrf);
+			
+			jive_surface_blit_text(tsrf, srf, x + 1, y + 1);
+			//jive_surface_blit(tsrf, srf, x + 1, y + 1);
+			//jive_surface_free(tsrf);
 		}
 
 		/* foreground text */
 		tsrf = jive_font_draw_text(peer->font, peer->fg, &text[line]);
-		jive_surface_blit(tsrf, srf, x, y);
-		jive_surface_free(tsrf);
+		jive_surface_blit_text(tsrf, srf, x, y);
+
+		//jive_surface_blit(tsrf, srf, x, y);
+		//jive_surface_free(tsrf);
 
 		text[next] = c;
 		text[(next - 1)] = b;

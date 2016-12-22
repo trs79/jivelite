@@ -88,7 +88,7 @@ int jiveL_widget_set_bounds(lua_State *L) {
 	lua_pushvalue(L, 1);
 	lua_call(L, 1, 0);
 
-	//printf("## SET_BOUNDS %p %d,%d %dx%d\n", lua_topointer(L, 1), peer->bounds.x, peer->bounds.y, peer->bounds.w, peer->bounds.h);
+	printf("## SET_BOUNDS %f,%f %fx%f\n", peer->bounds.x, peer->bounds.y, peer->bounds.w, peer->bounds.h);
 
 	return 0;
 }
@@ -569,6 +569,7 @@ int jive_widget_halign(JiveWidget *this, JiveAlign align, Uint16 width) {
 
 
 int jive_widget_valign(JiveWidget *this, JiveAlign align, Uint16 height) {
+	float crud = this->padding.top + ((this->bounds.h - this->padding.top - this->padding.bottom) - height) / 2;
 	switch (align) {
 	default:
         case JIVE_ALIGN_TOP:

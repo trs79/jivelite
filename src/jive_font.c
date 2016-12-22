@@ -8,10 +8,56 @@
 #include "common.h"
 #include "jive.h"
 
-
 static const char *JIVE_FONT_MAGIC = "Font";
 
 static JiveFont *fonts = NULL;
+
+static texture_atlas_t *atlas = NULL;
+
+static char *font_cache =
+" !\"#$%&'()*+,-./0123456789:;<=>?"
+"@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_"
+"`abcdefghijklmnopqrstuvwxyz{|}~";
+
+GPU_Image *atlas_image = NULL;
+
+Uint32 shader_program_number;
+
+
+#define GPU_TEXT_FRAGMENT_SHADER_SOURCE \
+"#version 150\n\
+\
+in vec4 color;\n\
+in vec2 texCoord;\n\
+\
+uniform sampler2D tex;\n\
+\
+out vec4 fragColor;\n\
+\
+void main(void)\n\
+{\n\
+	float a = texture(tex, texCoord).a; \n\
+	fragColor = vec4(color.rgb, color.a*a); \n\
+}"
+
+#define GPU_TEXT_VERTEX_SHADER_SOURCE \
+"#version 150\n\
+\
+in vec2 gpu_Vertex;\n\
+in vec2 gpu_TexCoord;\n\
+in vec4 gpu_Color;\n\
+uniform mat4 gpu_ModelViewProjectionMatrix;\n\
+\
+out vec4 color;\n\
+out vec2 texCoord;\n\
+\
+void main(void)\n\
+{\n\
+	color = gpu_Color;\n\
+	texCoord = vec2(gpu_TexCoord);\n\
+	gl_Position = gpu_ModelViewProjectionMatrix * vec4(gpu_Vertex, 0.0, 1.0);\n\
+}"
+
 
 
 static int load_ttf_font(JiveFont *font, const char *name, Uint16 size);
@@ -20,7 +66,7 @@ static void destroy_ttf_font(JiveFont *font);
 
 static int width_ttf_font(JiveFont *font, const char *str);
 
-static GPU_Image *draw_ttf_font(JiveFont *font, Uint32 color, const char *str);
+static JiveDrawText *draw_ttf_font(JiveFont *font, Uint32 color, const char *str);
 
 
 
@@ -38,10 +84,20 @@ JiveFont *jive_font_load(const char *name, Uint16 size) {
 		ptr = ptr->next;
 	}
 
+
 	/* Initialise the TTF api when required */
-	if (!TTF_WasInit() && TTF_Init() == -1) {
-		LOG_WARN(log_ui_draw, "TTF_Init: %s\n", TTF_GetError());
-		exit(-1);
+	if (!TTF_WasInit()) {
+		if (TTF_Init() == -1) {
+			LOG_WARN(log_ui_draw, "TTF_Init: %s\n", TTF_GetError());
+			exit(-1);
+		}
+
+		int v = GPU_CompileShader(GPU_VERTEX_SHADER, GPU_TEXT_VERTEX_SHADER_SOURCE);
+		int p = GPU_CompileShader(GPU_FRAGMENT_SHADER, GPU_TEXT_FRAGMENT_SHADER_SOURCE);
+
+		shader_program_number = GPU_LinkShaders(v, p);
+
+		atlas = texture_atlas_new(2048, 1024, 1);
 	}
 
 	ptr = calloc(sizeof(JiveFont), 1);
@@ -51,6 +107,13 @@ JiveFont *jive_font_load(const char *name, Uint16 size) {
 		return NULL;
 	}
 
+	// Texture font
+	ptr->t_font = texture_font_new_from_file(atlas, size, name);
+	size_t missed = texture_font_load_glyphs(ptr->t_font, font_cache);
+
+	assert(missed == 0);
+
+	ptr->shader_program_number = shader_program_number;
 	ptr->refcount = 1;
 	ptr->name = strdup(name);
 	ptr->size = size;
@@ -98,6 +161,7 @@ void jive_font_free(JiveFont *font) {
 	/* Shutdown the TTF api when all fonts are free */
 	if (fonts == NULL && TTF_WasInit()) {
 		TTF_Quit();
+		texture_atlas_delete(atlas);
 	}
 }
 
@@ -219,6 +283,8 @@ static void destroy_ttf_font(JiveFont *font) {
 		TTF_CloseFont(font->ttf);
 		font->ttf = NULL;
 	}
+
+	texture_font_delete(font->t_font);
 }
 
 static int width_ttf_font(JiveFont *font, const char *str) {
@@ -232,33 +298,101 @@ static int width_ttf_font(JiveFont *font, const char *str) {
 	return w;
 }
 
-static GPU_Image *draw_ttf_font(JiveFont *font, Uint32 color, const char *str) {
+float get_width(JiveDrawText *text) {
+	int i;
+	float width = 0;
+
+	for (i = 0; i < strlen(text->str); ++i)
+	{
+		texture_glyph_t *glyph = texture_font_get_glyph(text->font->t_font, text->str + i);
+
+		if (glyph != NULL)
+		{
+			float kerning = 0.0f;
+			if (i > 0)
+			{
+				kerning = texture_glyph_get_kerning(glyph, text->str + i - 1);
+			}
+			width += kerning;
+			//width += glyph->offset_x;
+			//width += glyph->width;
+			width += glyph->advance_x;
+		}
+	}
+
+	return width;
+}
+
+static JiveDrawText *draw_ttf_font(JiveFont *font, Uint32 color, const char *str) {
 #ifdef JIVE_PROFILE_BLIT
 	Uint32 t0 = jive_jiffies(), t1;
 #endif //JIVE_PROFILE_BLIT
-	SDL_Color clr;
-	SDL_Surface *srf;
-	GPU_Image *image;
+	//SDL_Color clr;
+	//SDL_Surface *srf;
+	//GPU_Image *image;
 
 	// don't call render for null strings as it produces an error which we want to hide
 	if (*str == '\0') {
 		return NULL;
 	}
 
-	clr.r = (color >> 24) & 0xFF;
-	clr.g = (color >> 16) & 0xFF;
-	clr.b = (color >> 8) & 0xFF;
+	if (atlas_image == NULL) {
+		atlas_image = GPU_CreateImage(atlas->width, atlas->height, GPU_FORMAT_ALPHA);
+		atlas_image->anchor_x = 0;
+		atlas_image->anchor_y = 0;
+		atlas_image->has_mipmaps = false;
+		atlas_image->wrap_mode_x = GPU_WRAP_NONE;
+		atlas_image->wrap_mode_y = GPU_WRAP_NONE;
+		atlas_image->snap_mode = GPU_SNAP_POSITION;
 
-	srf = TTF_RenderUTF8_Blended(font->ttf, str, clr);
-	image = GPU_CopyImageFromSurface(srf);
-	image->anchor_x = 0;
-	image->wrap_mode_x = GPU_WRAP_NONE;
-	image->wrap_mode_y = GPU_WRAP_NONE;
-	image->anchor_y = 0;
-
-	if (!srf) {
-		LOG_ERROR(log_ui_draw, "render returned error: %s\n", TTF_GetError());
+		GPU_UpdateImageBytes(atlas_image, NULL, atlas->data, atlas_image->bytes_per_pixel * atlas_image->w);
 	}
+
+	JiveDrawText *text;
+	text = calloc(sizeof(JiveDrawText), 1);
+
+	text->font = font;
+	text->str = calloc(strlen(str) + 1, sizeof(char));
+
+	strncpy(text->str, str, strlen(str));
+	text->str[strlen(str)] = '\0';
+
+	text->atlas_image = atlas_image;
+
+	text->color.r = (color >> 24) & 0xFF;
+	text->color.g = (color >> 16) & 0xFF;
+	text->color.b = (color >> 8) & 0xFF;
+	text->color.a = 255;
+
+	text->width = get_width(text);
+
+	/*atlas_image = GPU_LoadImage_RW(S, 1);
+
+	atlas_image = GPU_CopyImageFromSurface(surface);*/
+
+	//glGenTextures(1, &atlas->id);
+	//glBindTexture(GL_TEXTURE_2D, atlas->id);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	//
+	//GLint swizzleMask[] = { GL_ZERO, GL_ZERO, GL_ZERO, GL_RED };
+	//glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask);
+
+	//glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, atlas->width, atlas->height,
+	//	0, GL_ALPHA, GL_UNSIGNED_BYTE, atlas->data);
+
+	//atlas_image = GPU_CreateImageUsingTexture(atlas->id, true);
+
+	
+
+	//srf = TTF_RenderUTF8_Blended(font->ttf, str, clr);
+	
+
+	/*if (!srf) {
+		LOG_ERROR(log_ui_draw, "render returned error: %s\n", TTF_GetError());
+	}*/
 
 #if 0
 	// draw text bounding box for debugging
@@ -276,17 +410,20 @@ static GPU_Image *draw_ttf_font(JiveFont *font, Uint32 color, const char *str) {
 	printf("\tdraw_ttf_font took=%d %s\n", t1-t0, str);
 #endif //JIVE_PROFILE_BLIT
 
-	SDL_FreeSurface(srf);
-	return image;
+	//SDL_FreeSurface(srf);
+	return text;
 }
 
-JiveSurface *jive_font_draw_text(JiveFont *font, Uint32 color, const char *str) {
+
+
+JiveDrawText *jive_font_draw_text(JiveFont *font, Uint32 color, const char *str) {
 	assert(font && font->magic == JIVE_FONT_MAGIC);
 
-	return jive_surface_new_SDLSurface(str ? font->draw(font, color, str) : NULL);
+	return str ? font->draw(font, color, str) : NULL;
+	//return jive_surface_new_SDLSurface(str ? font->draw(font, color, str) : NULL);
 }
 
-JiveSurface *jive_font_ndraw_text(JiveFont *font, Uint32 color, const char *str, size_t len) {
+JiveDrawText *jive_font_ndraw_text(JiveFont *font, Uint32 color, const char *str, size_t len) {
 	char *tmp;
 
 	// FIXME use utf8 len

@@ -14,6 +14,8 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+#define NO_STDIO_REDIRECT
+
 /* Module initialization functions */
 extern int jive_system_init(lua_State *L);
 extern int jive_log_init(lua_State *L);

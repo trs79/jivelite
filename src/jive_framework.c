@@ -237,7 +237,10 @@ static int jiveL_initSDL(lua_State *L) {
 	}
 
 	/* initialise SDL_GPU */
-	screen = GPU_Init(800, 600, GPU_DEFAULT_INIT_FLAGS);
+	
+	GPU_RendererID id = GPU_GetRendererID(GPU_RENDERER_OPENGL_3);
+
+	screen = GPU_InitRenderer(id.renderer, 800, 600, GPU_DEFAULT_INIT_FLAGS);
 	if (screen == NULL)
 		return -1;
 
@@ -499,7 +502,7 @@ static int _draw_screen(lua_State *L) {
 
 	srf = *(JiveSurface **)lua_touserdata(L, 2);
 	
-	standalone_draw = lua_toboolean(L, 3);
+	standalone_draw = true;// lua_toboolean(L, 3);
 
 	/* Exit if we have no windows, nothing to draw */
 	lua_getfield(L, 1, "windowStack");

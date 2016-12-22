@@ -8,7 +8,7 @@
 #define JIVE_COMMON_H
 
 #define HAVE_SOCKETPAIR    1
-#define HAVE_SYSLOG        1
+// #define HAVE_SYSLOG        
 
 #if defined(linux)
 #define HAVE_CLOCK_GETTIME 1
@@ -40,6 +40,7 @@
 #define PATH_MAX 256
 #endif
 
+#define lua_assert
 #define JIVE_PROFILE_IMAGE_CACHE
 
 #if defined(WIN32)

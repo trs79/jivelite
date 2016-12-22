@@ -12,6 +12,7 @@
 
 #include <SDL_image.h>
 #include <SDL_ttf.h>
+#include <freetype-gl.h>
 // #include <SDL_gfxPrimitives.h>
 // #include <SDL_rotozoom.h>
 
@@ -193,6 +194,7 @@ typedef struct jive_event JiveEvent;
 
 typedef struct jive_font JiveFont;
 
+typedef struct jive_draw_text JiveDrawText;
 
 struct jive_peer_meta {
 	size_t size;
@@ -287,7 +289,7 @@ struct jive_font {
 	Uint16 size;
 
 	// Specific font functions
-	GPU_Image *(*draw)(struct jive_font *, Uint32, const char *);
+	JiveDrawText *(*draw)(struct jive_font *, Uint32, const char *);
 	int (*width)(struct jive_font *, const char *);
 	void (*destroy)(struct jive_font *);
 
@@ -298,8 +300,18 @@ struct jive_font {
 	int ascend;
 
 	struct jive_font *next;
+	texture_font_t *t_font;
+	Uint32 shader_program_number;
 
 	const char *magic;
+};
+
+struct jive_draw_text {
+	JiveFont *font;
+	SDL_Color color;
+	char *str;
+	GPU_Image *atlas_image;
+	float width;
 };
 
 struct jive_perfwarn {
@@ -371,6 +383,9 @@ void jive_surface_flip(JiveSurface *srf);
 void jive_surface_blit(JiveSurface *src, JiveSurface *dst, Uint16 dx, Uint16 dy);
 void jive_surface_blit_clip(JiveSurface *src, Uint16 sx, Uint16 sy, Uint16 sw, Uint16 sh,
 			    JiveSurface* dst, Uint16 dx, Uint16 dy);
+
+void jive_surface_blit_text(JiveDrawText *text, JiveSurface *dst, Uint16 dx, Uint16 dy);
+
 void jive_surface_blit_alpha(JiveSurface *src, JiveSurface *dst, Uint16 dx, Uint16 dy, Uint8 alpha);
 void jive_surface_get_size(JiveSurface *srf, Uint16 *w, Uint16 *h);
 int jive_surface_get_bytes(JiveSurface *srf);
@@ -429,8 +444,8 @@ int jive_font_height(JiveFont *font);
 int jive_font_capheight(JiveFont *font);
 int jive_font_ascend(JiveFont *font);
 int jive_font_offset(JiveFont *font);
-JiveSurface *jive_font_draw_text(JiveFont *font, Uint32 color, const char *str);
-JiveSurface *jive_font_ndraw_text(JiveFont *font, Uint32 color, const char *str, size_t len);
+JiveDrawText *jive_font_draw_text(JiveFont *font, Uint32 color, const char *str);
+JiveDrawText *jive_font_ndraw_text(JiveFont *font, Uint32 color, const char *str, size_t len);
 Uint32 utf8_get_char(const char *ptr, const char **nptr);
 
 
